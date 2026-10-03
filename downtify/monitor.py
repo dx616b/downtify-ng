@@ -236,9 +236,7 @@ class PlaylistMonitorDB:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = connect_sqlite(self._path, row_factory=True)
-        conn.execute('PRAGMA foreign_keys = ON')
-        return conn
+        return connect_sqlite(self._path, row_factory=True)
 
     def _init_db(self) -> None:
         with self._connect() as conn:

@@ -174,7 +174,7 @@ export default {
     filterAllPlaylists: 'Todas las listas',
     deletePlaylist: 'Eliminar lista',
     deletePlaylistPrompt:
-      '¿Eliminar todas las pistas de "{name}"? Se quitan archivos y la entrada del catálogo. M3U y Navidrome se actualizan en segundo plano.',
+      '¿Eliminar la lista "{name}"? Quita la lista, su M3U y los archivos solo de esa lista. Las pistas compartidas con otras listas se conservan. Navidrome se actualiza en segundo plano.',
     playlistDeleted: 'Lista "{name}" eliminada ({count} pistas).',
     playlistDeleteFailed: 'No se pudo eliminar la lista "{name}".',
     pathsScanning:

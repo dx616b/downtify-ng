@@ -169,7 +169,7 @@ export default {
     filterAllPlaylists: 'All playlists',
     deletePlaylist: 'Delete playlist',
     deletePlaylistPrompt:
-      'Delete all tracks in "{name}"? Files on disk and the playlist catalog entry are removed. M3U and Navidrome sync run in the background.',
+      'Delete playlist "{name}"? Removes the playlist, its M3U, and files unique to it. Tracks still used by other playlists stay on disk. Navidrome sync runs in the background.',
     playlistDeleted: 'Playlist "{name}" removed ({count} tracks).',
     playlistDeleteFailed: 'Could not delete playlist "{name}".',
     pathsScanning:

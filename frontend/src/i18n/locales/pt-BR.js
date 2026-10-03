@@ -171,7 +171,7 @@ export default {
     filterAllPlaylists: 'Todas as playlists',
     deletePlaylist: 'Excluir playlist',
     deletePlaylistPrompt:
-      'Excluir todas as faixas de "{name}"? Remove arquivos e a entrada no catálogo. M3U e Navidrome sincronizam em segundo plano.',
+      'Excluir a playlist "{name}"? Remove a playlist, o M3U e arquivos exclusivos dela. Faixas ainda usadas por outras playlists ficam no disco. O Navidrome sincroniza em segundo plano.',
     playlistDeleted: 'Playlist "{name}" removida ({count} faixas).',
     playlistDeleteFailed: 'Não foi possível excluir a playlist "{name}".',
     pathsScanning:

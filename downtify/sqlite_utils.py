@@ -17,4 +17,6 @@ def connect_sqlite(
         conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute(f'PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}')
+    # Required for ON DELETE CASCADE (off by default in SQLite).
+    conn.execute('PRAGMA foreign_keys=ON')
     return conn

@@ -75,6 +75,33 @@ def test_delete_if_spotify_tag_mismatch(tmp_path: Path) -> None:
     assert catalog.list_tracks('My Playlist') == []
 
 
+def test_delete_missing_file_purges_catalog(tmp_path: Path) -> None:
+    download_dir = tmp_path / 'downloads'
+    download_dir.mkdir()
+    db = tmp_path / 'lib.db'
+    catalog = PlaylistCatalog(db)
+    catalog.ensure_playlist('My Playlist')
+    # Register a path that is not on disk.
+    catalog.upsert_track(
+        'My Playlist',
+        {'song_id': '4uLU6hMCjMI75M1A2tKUQC'},
+        'My Playlist/Missing - Track.mp3',
+        download_dir / 'My Playlist' / 'Missing - Track.mp3',
+    )
+    assert catalog.list_tracks('My Playlist')
+
+    ctx = LibraryContext(download_dir=download_dir, playlist_catalog=catalog)
+    result = delete_library_file(
+        'My Playlist/Missing - Track.mp3',
+        ctx,
+        playlist_catalog=catalog,
+    )
+    assert result.get('deleted') is False
+    assert result.get('error') == 'File not found'
+    assert result.get('playlists_affected') == ['My Playlist']
+    assert catalog.list_tracks('My Playlist') == []
+
+
 def test_delete_playlist_from_library(tmp_path: Path) -> None:
     download_dir = tmp_path / 'downloads'
     pl_dir = download_dir / 'My Playlist'
@@ -110,6 +137,59 @@ def test_delete_playlist_from_library(tmp_path: Path) -> None:
     )
     assert result.get('ok') is True
     assert result['deleted_count'] == 2
+    assert result.get('shared_kept_count') == 0
     assert not t1.is_file()
     assert not t2.is_file()
     assert catalog.list_tracks('My Playlist') == []
+
+
+def test_delete_playlist_keeps_shared_files(tmp_path: Path) -> None:
+    download_dir = tmp_path / 'downloads'
+    slskd = download_dir / 'slskd'
+    pl_dir = download_dir / 'Temp Mix'
+    slskd.mkdir(parents=True)
+    pl_dir.mkdir(parents=True)
+    shared = slskd / 'Shared - Track.mp3'
+    unique = pl_dir / 'Only - Here.mp3'
+    shared.write_bytes(b'shared')
+    unique.write_bytes(b'unique')
+
+    db = tmp_path / 'lib.db'
+    catalog = PlaylistCatalog(db)
+    catalog.upsert_track(
+        'Temp Mix',
+        {'song_id': '4uLU6hMCjMI75M1A2tKUQC'},
+        'slskd/Shared - Track.mp3',
+        shared,
+    )
+    catalog.upsert_track(
+        'Temp Mix',
+        {'song_id': '1Je8F2j4RrcXdon8X0JPB'},
+        'Temp Mix/Only - Here.mp3',
+        unique,
+    )
+    catalog.upsert_track(
+        'Keep Mix',
+        {'song_id': '4uLU6hMCjMI75M1A2tKUQC'},
+        'slskd/Shared - Track.mp3',
+        shared,
+    )
+
+    state = _DeleteState(catalog, TrackIndex(db))
+    result = delete_playlist_from_library(
+        'Temp Mix',
+        download_dir,
+        {'organize_by_artist': False, 'generate_m3u': False},
+        state,
+    )
+    assert result.get('ok') is True
+    assert result['deleted_count'] == 1
+    assert result.get('shared_kept_count') == 1
+    assert not unique.is_file()
+    assert shared.is_file()
+    assert catalog.list_tracks('Temp Mix') == []
+    assert len(catalog.list_tracks('Keep Mix')) == 1
+    assert (
+        catalog.list_tracks('Keep Mix')[0]['filename']
+        == 'slskd/Shared - Track.mp3'
+    )

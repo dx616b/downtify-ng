@@ -23,6 +23,7 @@ See [Library catalog & path sync](features/library-catalog.md) for fork-specific
 
 **Bug fixes**
 
+- Playlist delete now removes the Navidrome playlist and only deletes files unique to that playlist (shared slskd tracks stay on disk)
 - HTTP 414 when syncing very large playlists to Navidrome
 - Library list API errors for playlist name fields
 - Navidrome match quality for slskd folder layouts and tag duration edge cases

@@ -29,7 +29,7 @@ Open **Library** in the nav bar.
 - **Refresh** — Reloads the list from the server; use **Refresh** after bulk file changes. The backend bypasses caches when `?refresh=true` is passed.
 - **Play / download / delete** — Per-track delete removes the file and cleans track index, playlist catalog, and cover cache entries.
 - **Delete selected** — Checkboxes and **Delete selected** remove many tracks in one request; affected playlists refresh M3U/Navidrome in the background.
-- **Filter by playlist** — Narrow the list; **Delete playlist** removes all catalog tracks for that playlist, audio under its folder, and its M3U file(s).
+- **Filter by playlist** — Narrow the list; **Delete playlist** removes that playlist’s catalog entry, M3U, and audio unique to it. Files still used by other playlists (common with slskd leave-in-place) are kept.
 
 ## Settings → Library & player
 
@@ -68,7 +68,7 @@ See [Navidrome setup](../../README.md#-navidrome-playlist-sync) in the README fo
 | `GET` | `/api/list` | Library entries with metadata and `playlists: string[]` |
 | `GET` | `/api/list?refresh=true` | Bypass path/metadata caches |
 | `POST` | `/api/library/delete/batch` | Body `{ "files": ["path/relative.mp3", …] }` — batch delete |
-| `DELETE` | `/api/library/playlist?playlist_name=…` | Delete playlist tracks, folder orphans, M3U, catalog row |
+| `DELETE` | `/api/library/playlist?playlist_name=…` | Remove playlist, M3U, and unique files; keep shared tracks |
 | `POST` | `/api/library/reconcile` | Run path reconcile + optional M3U/Navidrome refresh |
 | `GET` | `/cover?file=…` | Cover art (uses disk cache when enabled) |
 
