@@ -195,13 +195,13 @@ Delete multiple library files by stored relative path.
 
 ### `DELETE /api/library/playlist`
 
-Delete all tracks for a playlist, remove its M3U file(s), and drop the playlist catalog entry.
+Remove a playlist catalog entry and its M3U file(s). Audio files unique to that playlist are deleted; files still referenced by other playlists (e.g. shared slskd leave-in-place tracks) stay on disk. Navidrome refresh removes the remote playlist when sync is enabled.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `playlist_name` | string | yes | Playlist name as shown in Library badges |
 
-**Response:** `{ "ok": true, "playlist": "…", "files": ["…"], "deleted_count": 2, "failed_count": 0, "failed": [], "playlists_affected": ["…"], "playlists_refresh_scheduled": true }`
+**Response:** `{ "ok": true, "playlist": "…", "files": ["…"], "deleted_count": 2, "failed_count": 0, "failed": [], "shared_kept_count": 0, "playlists_affected": ["…"], "playlists_refresh_scheduled": true }`
 
 ---
 

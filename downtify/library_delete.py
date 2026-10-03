@@ -304,11 +304,15 @@ def _delete_audio_under_dir(
     *,
     skip_paths: set[str],
 ) -> dict[str, Any]:
-    """Delete audio files under *directory* not already in *skip_paths*."""
+    """Delete audio files under *directory* not already in *skip_paths*.
+
+    Skips paths still referenced by any remaining playlist catalog row.
+    """
 
     deleted: list[str] = []
     failed: list[dict[str, str]] = []
     affected: set[str] = set()
+    kept_shared = 0
 
     if not directory.is_dir():
         logger.debug(
@@ -321,6 +325,7 @@ def _delete_audio_under_dir(
             'playlists_affected': [],
         }
 
+    catalog = state.playlist_catalog
     logger.debug('Playlist folder scan: {}', directory)
     for path in directory.rglob('*'):
         if not path.is_file():
@@ -330,6 +335,18 @@ def _delete_audio_under_dir(
         stored = library_stored_path(path, ctx.download_dir, ctx.slskd_dir)
         if stored in skip_paths:
             continue
+        if catalog is not None:
+            owners = catalog.playlists_by_filenames([stored]).get(stored) or []
+            if owners:
+                kept_shared += 1
+                skip_paths.add(stored)
+                logger.info(
+                    'Playlist delete: keeping shared folder file {} '
+                    '(still in playlists: {})',
+                    stored,
+                    ', '.join(owners),
+                )
+                continue
         result = delete_library_file(
             stored,
             ctx,
@@ -350,6 +367,13 @@ def _delete_audio_under_dir(
                 'file': stored,
                 'error': str(result.get('error') or 'Delete failed'),
             })
+
+    if kept_shared:
+        logger.info(
+            'Playlist delete: folder scan kept {} shared file(s) under {}',
+            kept_shared,
+            directory,
+        )
 
     return {
         'deleted': deleted,
@@ -412,18 +436,53 @@ def _log_playlist_delete_summary(
     )
 
 
+def _split_unique_and_shared_files(
+    playlist_name: str,
+    filenames: list[str],
+    catalog: Any,
+) -> tuple[list[str], list[str]]:
+    """Return (unique_to_playlist, shared_with_others) for *filenames*."""
+
+    by_file = catalog.playlists_by_filenames(filenames)
+    unique: list[str] = []
+    shared: list[str] = []
+    for name in filenames:
+        owners = [
+            pl for pl in (by_file.get(name) or []) if str(pl) != playlist_name
+        ]
+        if owners:
+            shared.append(name)
+        else:
+            unique.append(name)
+    return unique, shared
+
+
 def _delete_playlist_catalog_tracks(
     playlist_name: str,
     ctx: LibraryContext,
     state: Any,
     catalog: Any,
-) -> tuple[list[str], list[str], list[dict[str, str]], set[str], set[str]]:
-    filenames = catalog.delete_playlist(playlist_name)
-    seen = set(filenames)
+) -> dict[str, Any]:
+    # Inspect sharing *before* dropping this playlist's catalog rows.
+    rows = catalog.list_tracks(playlist_name)
+    filenames = list(
+        dict.fromkeys(
+            str(row.get('filename') or '').strip().replace('\\', '/')
+            for row in rows
+            if row.get('filename')
+        )
+    )
+    unique, shared = _split_unique_and_shared_files(
+        playlist_name, filenames, catalog
+    )
+    catalog.delete_playlist(playlist_name)
     logger.info(
-        'Playlist delete: catalog had {} registered track file(s) for {!r}',
+        'Playlist delete: catalog had {} registered track file(s) for {!r} '
+        '({} unique, {} shared with other playlists)',
         len(filenames),
         playlist_name,
+        len(unique),
+        len(shared),
     )
     if not filenames:
         logger.info(
@@ -431,20 +490,35 @@ def _delete_playlist_catalog_tracks(
             'relying on folder scan and M3U cleanup',
             playlist_name,
         )
+    if shared:
+        logger.info(
+            'Playlist delete: keeping {} shared file(s) still used by other '
+            'playlists (e.g. slskd leave-in-place tracks)',
+            len(shared),
+        )
 
-    batch = delete_library_files(list(seen), ctx, state, log_failures=False)
-    downloaded_from_catalog = list(batch['deleted'])
+    # Only unlink files that no other playlist still references.
+    batch = delete_library_files(unique, ctx, state, log_failures=False)
+    deleted = list(batch['deleted'])
     failed = list(batch['failed'])
     if filenames:
         logger.info(
-            'Playlist delete: removed {}/{} catalog track file(s) for {!r}',
-            len(downloaded_from_catalog),
-            len(filenames),
+            'Playlist delete: removed {}/{} unique catalog file(s) for {!r} '
+            '({} shared kept on disk)',
+            len(deleted),
+            len(unique),
             playlist_name,
+            len(shared),
         )
     _log_failed_deletes(failed, context=f'Playlist delete ({playlist_name!r})')
-    affected = set(batch.get('playlists_affected') or [])
-    return filenames, downloaded_from_catalog, failed, seen, affected
+    return {
+        'filenames': filenames,
+        'deleted': deleted,
+        'failed': failed,
+        'seen': set(filenames),
+        'affected': set(batch.get('playlists_affected') or []),
+        'shared_kept': len(shared),
+    }
 
 
 def _delete_playlist_folder_extras(
@@ -499,7 +573,11 @@ def delete_playlist_from_library(
     settings: dict[str, Any],
     state: Any,
 ) -> dict[str, Any]:
-    """Delete all tracks for a playlist, remove M3U, drop catalog entry."""
+    """Remove a playlist catalog entry, its M3U, and files unique to it.
+
+    Files still referenced by other playlists (common with slskd leave-in-place)
+    stay on disk; only this playlist's membership and Navidrome list are dropped.
+    """
 
     pl_name = str(playlist_name or '').strip()
     if not pl_name:
@@ -523,10 +601,12 @@ def delete_playlist_from_library(
     if catalog is None:
         return {'ok': False, 'error': 'Playlist catalog not available'}
 
-    filenames, downloaded_from_catalog, failed, seen, affected = (
-        _delete_playlist_catalog_tracks(pl_name, ctx, state, catalog)
+    catalog_result = _delete_playlist_catalog_tracks(
+        pl_name, ctx, state, catalog
     )
-    deleted = list(downloaded_from_catalog)
+    deleted = list(catalog_result['deleted'])
+    failed = list(catalog_result['failed'])
+    affected: set[str] = set(catalog_result['affected'])
     extra_deleted: list[str] = []
 
     if not organize:
@@ -536,13 +616,12 @@ def delete_playlist_from_library(
                 download_dir / safe,
                 ctx,
                 state,
-                skip_paths=seen,
-                already_deleted=downloaded_from_catalog,
+                skip_paths=catalog_result['seen'],
+                already_deleted=list(catalog_result['deleted']),
             )
         )
         failed.extend(extra_failed)
-        for pl_name_affected in extra_affected:
-            affected.add(pl_name_affected)
+        affected.update(extra_affected)
     else:
         logger.info(
             'Playlist delete: skipped folder scan for {!r} '
@@ -562,9 +641,9 @@ def delete_playlist_from_library(
 
     _log_playlist_delete_summary(
         pl_name,
-        catalog_count=len(filenames),
+        catalog_count=len(catalog_result['filenames']),
         deleted_count=len(deleted),
-        catalog_deleted=len(downloaded_from_catalog),
+        catalog_deleted=len(catalog_result['deleted']),
         folder_deleted=len(extra_deleted),
         failed_count=len(failed),
         m3u_removed=m3u_removed,
@@ -577,5 +656,6 @@ def delete_playlist_from_library(
         'deleted_count': len(deleted),
         'failed_count': len(failed),
         'failed': failed,
+        'shared_kept_count': int(catalog_result['shared_kept']),
         'playlists_affected': sorted(affected),
     }
