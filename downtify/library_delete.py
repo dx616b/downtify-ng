@@ -152,24 +152,23 @@ def delete_library_file(
         return {'file': stored_path, 'deleted': False, 'error': 'Empty path'}
 
     full = resolve_library_file(file_key, ctx)
-    if full is None:
+    missing_on_disk = full is None
+    if missing_on_disk:
         logger.warning('Library delete: file not found on disk: {}', file_key)
-        return {
-            'file': file_key,
-            'deleted': False,
-            'error': 'File not found',
-        }
+    else:
+        try:
+            full.unlink()
+        except OSError as exc:
+            logger.warning(
+                'Library delete: could not unlink {}: {}',
+                full,
+                exc,
+            )
+            return {'file': file_key, 'deleted': False, 'error': str(exc)}
 
-    try:
-        full.unlink()
-    except OSError as exc:
-        logger.warning(
-            'Library delete: could not unlink {}: {}',
-            full,
-            exc,
-        )
-        return {'file': file_key, 'deleted': False, 'error': str(exc)}
-
+    # Always drop catalog / cache rows for this path, including when the
+    # file is already gone — otherwise playlist delete leaves orphans and
+    # Navidrome refresh keeps the remote playlist alive.
     affected_playlists: list[str] = []
     if cover_cache is not None:
         cover_cache.forget(file_key, full_path=full)
@@ -186,6 +185,21 @@ def delete_library_file(
 
     if invalidate_paths:
         invalidate_library_paths_cache()
+
+    if missing_on_disk:
+        if affected_playlists:
+            logger.info(
+                'Library delete: purged catalog for missing file {} '
+                '(playlists: {})',
+                file_key,
+                ', '.join(affected_playlists),
+            )
+        return {
+            'file': file_key,
+            'deleted': False,
+            'error': 'File not found',
+            'playlists_affected': affected_playlists,
+        }
 
     if affected_playlists:
         logger.info(
@@ -234,10 +248,10 @@ def delete_library_files(
             navidrome_index=state.navidrome_index,
             invalidate_paths=False,
         )
+        for pl in result.get('playlists_affected') or []:
+            affected.add(str(pl))
         if result.get('deleted'):
             deleted.append(key)
-            for pl in result.get('playlists_affected') or []:
-                affected.add(str(pl))
         else:
             failed.append({
                 'file': key,

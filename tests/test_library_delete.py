@@ -75,6 +75,33 @@ def test_delete_if_spotify_tag_mismatch(tmp_path: Path) -> None:
     assert catalog.list_tracks('My Playlist') == []
 
 
+def test_delete_missing_file_purges_catalog(tmp_path: Path) -> None:
+    download_dir = tmp_path / 'downloads'
+    download_dir.mkdir()
+    db = tmp_path / 'lib.db'
+    catalog = PlaylistCatalog(db)
+    catalog.ensure_playlist('My Playlist')
+    # Register a path that is not on disk.
+    catalog.upsert_track(
+        'My Playlist',
+        {'song_id': '4uLU6hMCjMI75M1A2tKUQC'},
+        'My Playlist/Missing - Track.mp3',
+        download_dir / 'My Playlist' / 'Missing - Track.mp3',
+    )
+    assert catalog.list_tracks('My Playlist')
+
+    ctx = LibraryContext(download_dir=download_dir, playlist_catalog=catalog)
+    result = delete_library_file(
+        'My Playlist/Missing - Track.mp3',
+        ctx,
+        playlist_catalog=catalog,
+    )
+    assert result.get('deleted') is False
+    assert result.get('error') == 'File not found'
+    assert result.get('playlists_affected') == ['My Playlist']
+    assert catalog.list_tracks('My Playlist') == []
+
+
 def test_delete_playlist_from_library(tmp_path: Path) -> None:
     download_dir = tmp_path / 'downloads'
     pl_dir = download_dir / 'My Playlist'

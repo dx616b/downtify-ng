@@ -48,6 +48,23 @@ def test_list_playlist_names_prefers_human_title_over_spotify_id(
     assert catalog.list_playlist_names() == ['Road Trip']
 
 
+def test_delete_playlist_removes_track_rows(tmp_path: Path) -> None:
+    """Playlist delete must clear track rows even without FK CASCADE."""
+
+    catalog = PlaylistCatalog(tmp_path / 'lib.db')
+    track = tmp_path / 'Artist - Song.mp3'
+    track.write_bytes(b'audio')
+    catalog.upsert_track(
+        'Gone',
+        {'song_id': '4uLU6hMCjMI75M1A2tKUQC'},
+        'Gone/Artist - Song.mp3',
+        track,
+    )
+    assert catalog.list_tracks('Gone')
+    assert catalog.delete_playlist('Gone') == ['Gone/Artist - Song.mp3']
+    assert catalog.list_tracks('Gone') == []
+
+
 def test_resolve_playlist_filter_maps_id_alias_to_named_playlist(
     tmp_path: Path,
 ) -> None:

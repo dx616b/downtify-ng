@@ -370,6 +370,18 @@ def refresh_playlists_after_moves(  # noqa: PLR0914
                     'library reconcile: M3U failed for playlist {!r}', name
                 )
 
+        if sync_navidrome and not songs_for_nav:
+            # Catalog rows remain but nothing is on disk (full playlist
+            # delete, or every path moved/missing) — drop the remote list.
+            try:
+                remove_navidrome_playlist_by_name(name, settings)
+            except Exception:
+                logger.exception(
+                    'library reconcile: Navidrome remove failed for {!r}',
+                    name,
+                )
+            continue
+
         if sync_navidrome and songs_for_nav:
             try:
                 sync_playlist_to_navidrome(

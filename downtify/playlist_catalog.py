@@ -474,6 +474,12 @@ class PlaylistCatalog:
                     if row['filename']
                 )
             )
+            # Explicit track delete: do not rely on FK CASCADE alone
+            # (older DBs / connections may not have foreign_keys enabled).
+            conn.execute(
+                'DELETE FROM playlist_tracks WHERE playlist_name = ?',
+                (pl_name,),
+            )
             conn.execute('DELETE FROM playlists WHERE name = ?', (pl_name,))
         return filenames
 
